@@ -1,1 +1,1 @@
-# detect_container_cpu
+# container_cpu_detection
