@@ -12,29 +12,29 @@
 #include <string.h>
 #include <errno.h>
 
-#define INJECT_TARGETS      "CONTAINER_PROC_INJECT_TARGETS"
+#define DETECTION_TARGETS      "DETECTION_TARGETS"
 
-#define MAXPATHLEN          1024
+#define MAXPATHLEN              4096
 
-#define DETECTION_OK        0
-#define DETECTION_ERROR    -1
+#define DETECTION_OK            0
+#define DETECTION_ERROR        -1
 
-#define PER_CPU_SHARES      1024
+#define PER_CPU_SHARES          1024
 
 #define SET_SUBSYSTEM_INFO(subsystem_info, value) \
     subsystem_info.data = strdup(value); \
     subsystem_info.len = strlen(value);
 
-#define MIN(val1, val2)  ((val1 > val2) ? (val2) : (val1))
+#define DETECTION_MIN(val1, val2)  ((val1 > val2) ? (val2) : (val1))
 
 #ifdef INJECT_DEBUG
-    #define DEBUG_LOG(...) do {						\
+#define DEBUG_LOG(...) do {                     \
                        fprintf(stderr, "%s@%d: ", __FILE__, __LINE__); \
-                       fprintf(stderr, __VA_ARGS__);		\
-                       fprintf(stderr, "\n");			\
+                       fprintf(stderr, __VA_ARGS__);        \
+                       fprintf(stderr, "\n");           \
                        } while(0)
 #else
-    #define DEBUG_LOG(...)
+#define DEBUG_LOG(...)
 #endif
 
 #define d_string(str)     { sizeof(str) - 1, (char *) str }
@@ -47,13 +47,12 @@ typedef struct {
 } d_string_t;
 
 typedef struct {
-    d_string_t root;
-    d_string_t path;
-    d_string_t mount_point;
+    d_string_t  root;
+    d_string_t  path;
+    d_string_t  mount_point;
 } cgroup_subsystem_info;
 
 static cgroup_subsystem_info cpu_subsystem;
-static cgroup_subsystem_info cpuacct_subsystem;
 static cgroup_subsystem_info cpuset_subsystem;
 
 static d_string_t cpu_cfs_period  = d_string("/cpu.cfs_period_us");
@@ -61,9 +60,13 @@ static d_string_t cpu_cfs_quota   = d_string("/cpu.cfs_quota_us");
 static d_string_t cpu_cfs_shares  = d_string("/cpu.shares");
 static d_string_t cpu_cpuset_cpus = d_string("/cpuset.cpus");
 
-static void _init() __attribute__((constructor));
+static void __attribute__((constructor)) _init();
+static void __attribute__((destructor)) _fini();
+
 static glibc_sysconf _orig_sysconf;
-static int inject_open;
+static int detection_open;
+static int detection_initialized;
+
 
 static long orig_sysconf(int name)
 {
@@ -74,7 +77,8 @@ static long orig_sysconf(int name)
     return _orig_sysconf(name);
 }
 
-static int is_inject_target()
+
+static int is_detection_target()
 {
     char exe[1024];
     char *base;
@@ -84,10 +88,11 @@ static int is_inject_target()
     if (ret == DETECTION_ERROR) {
         return 0;
     }
+
     exe[ret] = 0;
     base = basename(exe);
 
-    char *targets = getenv(INJECT_TARGETS);
+    char *targets = getenv(DETECTION_TARGETS);
     if (targets) {
         char *target = strtok(targets, ":");
 
@@ -103,11 +108,12 @@ static int is_inject_target()
     return 0;
 }
 
+
 static int set_subsystem_path(cgroup_subsystem_info *subsystem_info,
                               char *cgroup_path)
 {
-    int       len;
-    char      buf[MAXPATHLEN + 1];
+    int    len;
+    char   buf[MAXPATHLEN + 1];
 
     if (subsystem_info->root.len != 0 && cgroup_path != NULL) {
         if (strcmp(subsystem_info->root.data, "/") == 0) {
@@ -141,20 +147,43 @@ static int set_subsystem_path(cgroup_subsystem_info *subsystem_info,
     return DETECTION_OK;
 }
 
+static void detection_free(cgroup_subsystem_info *subsystem)
+{
+    int skip = (subsystem->mount_point.data == subsystem->path.data) ? 1 : 0;
+
+    if (!skip && subsystem->mount_point.data != NULL) {
+        free(subsystem->mount_point.data);
+        subsystem->mount_point.data = NULL;
+    }
+
+    if (subsystem->path.data != NULL) {
+        free(subsystem->path.data);
+        subsystem->path.data = NULL;
+    }
+
+    if (subsystem->root.data != NULL) {
+        free(subsystem->root.data);
+        subsystem->root.data = NULL;
+    }
+}
 
 static int detection_init()
 {
-    char *p;
     int mountid;
     int parentid;
     int major;
     int minor;
-    FILE *mntinfo   = NULL;
-    FILE *cgroup    = NULL;
+    char *p;
     char buf[MAXPATHLEN];
     char tmproot[MAXPATHLEN];
     char tmpmount[MAXPATHLEN];
     char fstype[MAXPATHLEN];
+    FILE *mntinfo = NULL;
+    FILE *cgroup = NULL;
+
+    if (detection_initialized) {
+        return DETECTION_OK;
+    }
 
     /*
      * parse mountinfo file
@@ -188,7 +217,7 @@ static int detection_init()
                 SET_SUBSYSTEM_INFO(cpuset_subsystem.root, tmproot);
                 SET_SUBSYSTEM_INFO(cpuset_subsystem.mount_point, tmpmount);
             } else {
-                DEBUG_LOG("Incompatible str containing cgroup and cpuset: %s", p);
+                DEBUG_LOG("Incompatible string containing cgroup and cpuset: %s", p);
             }
         } else if (strstr(p, "cpu,cpuacct") != NULL) {
             int matched = sscanf(p, "%d %d %d:%d %s %s",
@@ -201,26 +230,15 @@ static int detection_init()
             if (matched == 6) {
                 SET_SUBSYSTEM_INFO(cpu_subsystem.root, tmproot);
                 SET_SUBSYSTEM_INFO(cpu_subsystem.mount_point, tmpmount);
-
-                SET_SUBSYSTEM_INFO(cpuacct_subsystem.root, tmproot);
-                SET_SUBSYSTEM_INFO(cpuacct_subsystem.mount_point, tmpmount);
             } else {
                 DEBUG_LOG("Incompatible str containing cgroup and cpu,cpuacct: %s", p);
             }
         } else if (strstr(p, "cpuacct") != NULL) {
-            int matched = sscanf(p, "%d %d %d:%d %s %s",
-                                 &mountid,
-                                 &parentid,
-                                 &major,
-                                 &minor,
-                                 tmproot,
-                                 tmpmount);
-            if (matched == 6) {
-                SET_SUBSYSTEM_INFO(cpuacct_subsystem.root, tmproot);
-                SET_SUBSYSTEM_INFO(cpuacct_subsystem.mount_point, tmpmount);
-            } else {
-                DEBUG_LOG("Incompatible str containing cgroup and cpuacct: %s", p);
-            }
+            /*
+             * In order to maintain the matching order.
+             * Actually this matching method is not strict enough,
+             * need to refactor this matching method.
+             */
         } else if (strstr(p, "cpu") != NULL) {
             int matched = sscanf(p, "%d %d %d:%d %s %s",
                                  &mountid,
@@ -267,11 +285,14 @@ static int detection_init()
                 set_subsystem_path(&cpuset_subsystem, base);
             } else if (strstr(controller, "cpu,cpuacct") != NULL) {
                 set_subsystem_path(&cpu_subsystem, base);
-                set_subsystem_path(&cpuacct_subsystem, base);
             } else if (strstr(controller, "cpuacct") != NULL) {
-                set_subsystem_path(&cpuacct_subsystem, base);
+                /*
+                 * In order to maintain the matching order.
+                 * Actually this matching method is not strict enough,
+                 * need to refactor this matching method.
+                 */
             } else if (strstr(controller, "cpu") != NULL) {
-                set_subsystem_path(&cpuset_subsystem, base);
+                set_subsystem_path(&cpu_subsystem, base);
             }
         }
     }
@@ -284,6 +305,8 @@ static int detection_init()
         DEBUG_LOG("Required cgroup subsystems not found");
         return DETECTION_ERROR;
     }
+
+    detection_initialized = 1;
 
     return DETECTION_OK;
 }
@@ -307,7 +330,7 @@ static int read_subsystem_file(const char *filename, char *value,
     FILE    *fp;
     int      ret;
     ssize_t  len;
-    
+
     fp = fopen(filename, "r");
     if (!fp) {
         DEBUG_LOG("Failed to open %s\n", filename);
@@ -344,7 +367,7 @@ static int cpuset_getrange(const char *c, int *a, int *b)
 
 
 static int read_cpu_subsystem_info(cgroup_subsystem_info *subsystem,
-                        d_string_t *filename, int *value, int cpuset)
+                                   d_string_t *filename, int *value, int cpuset)
 {
     char *p;
     int   ret;
@@ -356,7 +379,7 @@ static int read_cpu_subsystem_info(cgroup_subsystem_info *subsystem,
     }
 
     if ((subsystem->path.len + filename->len) > MAXPATHLEN) {
-        DEBUG_LOG("The subsystem filename exceeds normal range (%d, %d).",
+        DEBUG_LOG("The subsystem filename exceeds normal range (%d + %d).",
                   subsystem->path.len, filename->len);
         return DETECTION_ERROR;
     }
@@ -365,13 +388,12 @@ static int read_cpu_subsystem_info(cgroup_subsystem_info *subsystem,
 
     ret = read_subsystem_file(full_path, buf, MAXPATHLEN);
     if (ret == DETECTION_ERROR) {
-        DEBUG_LOG("Failed to read %s.", full_path);
+        DEBUG_LOG("Failed to read file : %s.", full_path);
         return ret;
     }
 
     if (cpuset) {
         ret = 0;
-
         for (p = buf; p; p = cpuset_nexttok(p)) {
             int a, b;
 
@@ -392,19 +414,27 @@ static int read_cpu_subsystem_info(cgroup_subsystem_info *subsystem,
 
 static void _init()
 {
-    DEBUG_LOG("Init stdlib hijack.");
-    inject_open = is_inject_target();
+    DEBUG_LOG("Detection: init.");
+    detection_open = is_detection_target();
+}
+
+static void _fini()
+{
+    DEBUG_LOG("Detection: fini.");
+    detection_free(&cpu_subsystem);
+    detection_free(&cpuset_subsystem);
 }
 
 
-long sysconf(int name) {
+long sysconf(int name)
+{
     int    ret;
     int    cpuset_count, quota, period, shares;
     int    quota_count = 0, share_count = 0;
     int    cpu_count, limit_count;
 
-    DEBUG_LOG("Calling hijacked sysconf");
-    if (!inject_open || name != _SC_NPROCESSORS_ONLN) {
+    DEBUG_LOG("Detection: sysconf is called.");
+    if (!detection_open || name != _SC_NPROCESSORS_ONLN) {
         return orig_sysconf(name);
     }
 
@@ -442,7 +472,7 @@ long sysconf(int name) {
             break;
         }
     } while (0);
-    
+
     if (ret == DETECTION_ERROR) {
         return total_cpu_num;
     }
@@ -463,12 +493,12 @@ long sysconf(int name) {
     }
 
     if (quota_count != 0 && share_count != 0) {
-        limit_count = MIN(quota_count, share_count);
+        limit_count = DETECTION_MIN(quota_count, share_count);
     } else if (quota_count != 0) {
         limit_count = quota_count;
     } else if (share_count != 0) {
         limit_count = share_count;
     }
 
-    return MIN(cpu_count, limit_count);
+    return DETECTION_MIN(cpu_count, limit_count);
 }
