@@ -1,0 +1,16 @@
+# https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+# clang-format version 6.0.0 (tags/RELEASE_600/final)
+
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+# TODO: turn on once https://reviews.llvm.org/D28462 is available
+# AlignConsecutiveMacros: true
+
+IndentWidth: 4
+BreakBeforeBraces: Linux
+SortIncludes: true
+
+ColumnLimit: 80
+SpacesBeforeTrailingComments: 2
