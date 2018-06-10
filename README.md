@@ -38,15 +38,23 @@ This three ways can be specified at the same time. When they are specfied at the
 
 
 ## Usage
+* make
+* make test (Please make sure that docker has already installed.)
 
-    1. make
-    2. make test (Please make sure that docker has already installed.)
+Note:
+1. Set the environment variable `DETECTION_TARGETS` in the container to 
+      specify which programs you want to hijack. Multiple name can be specified
+      at the same time. (separated by a colon)
+2. Set the environment variable `LD_PRELOAD` in the container to specify 
+      the path of the .so file.
+3. Running a container with -v parameter to mount .so file into the container.
 
-    Note:
-    * Set the environment variable `DETECTION_TARGETS` in the container to specify which programs you want to hijack. Multiple name can be specified at the same time. (separated by a colon)
-    * Set the environment variable `LD_PRELOAD` in the container to specify the path of the .so file.
-    * Running a container with -v parameter to mount .so file into the container.
+For example:
 
-    For example:
-
-    docker run -ti --rm --cpuset-cpus 1,4 --cpu-quota 400000 -v `pwd`/detection.so:/usr/lib/detection.so -v `pwd`/sysconf_test:/tmp/sysconf_test -e DETECTION_TARGETS=sysconf_test -e LD_PRELOAD=/usr/lib/detection.so ubuntu /tmp/sysconf_test
+    docker run -ti --rm \
+    --cpuset-cpus 1,4 --cpu-quota 400000 \
+    -v `pwd`/detection.so:/usr/lib/detection.so \
+    -v `pwd`/sysconf_test:/tmp/sysconf_test \
+    -e DETECTION_TARGETS=sysconf_test \
+    -e LD_PRELOAD=/usr/lib/detection.so \
+    ubuntu /tmp/sysconf_test
