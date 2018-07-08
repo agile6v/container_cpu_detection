@@ -32,7 +32,7 @@ By reading /sys/fs/cgroup/cpu/cpu.cfs_period_us & /sys/fs/cgroup/cpu/cpu.cfs_quo
 
 By reading /sys/fs/cgroup/cpu/cpu.shares. If you don't specify the cpu shares when running a container then its default value is 1024.
 
-##### Step 4 - Get the number of available CPU cores.
+##### Step 4 - Calculate the number of available CPU cores.
 
 These three ways can be specified at the same time. When they are specfied at the same time, take the minimum value as the number of available CPU cores.
 
