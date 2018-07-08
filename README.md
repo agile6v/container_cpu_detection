@@ -34,7 +34,7 @@ By reading /sys/fs/cgroup/cpu/cpu.shares. If you don't specify the cpu shares wh
 
 ##### Step 4 - Get the number of available CPU cores.
 
-This three ways can be specified at the same time. When they are specfied at the same time, take the minimum value as the number of available CPU cores.
+These three ways can be specified at the same time. When they are specfied at the same time, take the minimum value as the number of available CPU cores.
 
 
 ## Usage
