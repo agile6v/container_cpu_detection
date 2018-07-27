@@ -48,11 +48,12 @@ Note:
 2. Set the environment variable `LD_PRELOAD` in the container to specify 
       the path of the .so file.
 3. Running a container with -v parameter to mount .so file into the container.
+4. Only for Linux.
 
 For example:
 
     docker run -ti --rm \
-    --cpuset-cpus 1,4 --cpu-quota 400000 \
+    --cpuset-cpus 0,1 --cpu-quota 400000 \
     -v `pwd`/detection.so:/usr/lib/detection.so \
     -v `pwd`/sysconf_test:/tmp/sysconf_test \
     -e DETECTION_TARGETS=sysconf_test \
