@@ -3,7 +3,7 @@ versioned_so = detection.so
 DOCKER_IMAGE = ubuntu
 DOCKER_CMD = /tmp/sysconf_test
 DOCKER_RUN_OPTS = $(shell echo "-ti --rm" \
-					"--cpuset-cpus 1 --cpu-quota 400000" \
+					"--cpuset-cpus 0,1 --cpu-quota 200000" \
 				    "-v `pwd`/detection.so:/usr/lib/detection.so" \
 					"-v `pwd`/sysconf_test:/tmp/sysconf_test" \
 					"-e DETECTION_TARGETS=sysconf_test" \
