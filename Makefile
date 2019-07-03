@@ -10,7 +10,8 @@ DOCKER_RUN_OPTS = $(shell echo "-ti --rm" \
 					"-e LD_PRELOAD=/usr/lib/detection.so")
 
 $(versioned_so): detection.c
-	gcc -std=c99 -Wall -shared -g -fPIC -ldl detection.c -o $(versioned_so)
+	gcc -std=c99 -Wall -shared -g -fPIC -Wl,--no-as-needed -ldl detection.c -o $(versioned_so)
+
 	gcc sysconf_test.c -o sysconf_test
 
 clean:
